@@ -1,2 +1,4 @@
 https://sefiks.com/2018/08/06/deep-face-recognition-with-keras/
 https://github.com/serengil/tensorflow-101/blob/master/python/vgg-face.ipynb
+
+need to have folders faces and profiles (with IW profile images)
