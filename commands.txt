@@ -1,0 +1,15 @@
+1 python -m pip install tensorflow
+2 pip install matplotlib
+3 pip install keras
+
+1 python -m pip install cv2
+2 pip install opencv-python
+3 pip install numpy
+4 python -m pip install --upgrade pip
+5 pip install numpy
+6 pip install PIL
+7 Could not find a version that satisfies the requirement PIL╚╚
+8 pip install Pillow
+9 pip install boto3
+
+Python 3.6.5 version
