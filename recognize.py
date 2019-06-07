@@ -2,7 +2,7 @@ from keras.models import Model, Sequential
 from keras.layers import Input, Convolution2D, ZeroPadding2D, MaxPooling2D, Flatten, Dense, Dropout, Activation
 import numpy as np
 from os import listdir,path
-from os.path import isfile, join
+from os.path import isfile, join, isdir, splitext
 from PIL import Image
 from keras.preprocessing.image import load_img, save_img, img_to_array
 from keras.applications.imagenet_utils import preprocess_input
@@ -11,6 +11,8 @@ from keras.preprocessing import image
 import cv2 as cv
 import boto3
 # import sounddevice as sd
+import time
+from threading import Thread
 
 model = Sequential()
 model.add(ZeroPadding2D((1,1),input_shape=(224,224, 3)))
@@ -88,16 +90,34 @@ def findEuclideanDistance(source_representation, target_representation):
 
 face_cascade = cv.CascadeClassifier(join('haarcascades','haarcascade_frontalface_default.xml'))
 
-faces_dir='faces'
+faces_dir='faces1'
 
 faces={}
+mainDict={}
+dirDict={}
+dirs = [f for f in listdir(faces_dir) if isdir(join(faces_dir, f))]
+face_imgs=None
+for dir in dirs:
+    dirDict[dir]=[]
+    if face_imgs is None:
+        face_imgs = [f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
+        for img in face_imgs:
+            mainDict[splitext(img)[0]]=dir
+            dirDict[dir].append(splitext(img)[0])
+    else:
+        items=[f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
+        for item in items:
+            face_imgs.append(item)
+            mainDict[splitext(item)[0]]=dir
+            dirDict[dir].append(splitext(item)[0])
+ 
 
-face_imgs = [f for f in listdir(faces_dir) if isfile(join(faces_dir, f))]
+# face_imgs = [f for f in listdir(faces_dir) if isfile(join(faces_dir, f))]
 
 for face_file in face_imgs:
     face_label=path.splitext(face_file)[0]
     print(face_label)
-    face_representation= vgg_face_descriptor.predict(preprocess_image(join(faces_dir,face_file)))[0,:]
+    face_representation= vgg_face_descriptor.predict(preprocess_image(join(faces_dir + "/" + mainDict[face_label],face_file)))[0,:]
     faces[face_label]=face_representation
 
 def detect_face(img):
@@ -108,29 +128,40 @@ def detect_face(img):
         roi = img[y:y+h, x:x+w] 
         return roi
 
-vc = cv.VideoCapture(0)
 
-if vc.isOpened(): 
-    is_capturing, frame = vc.read()
-    frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-    vc.release()
-    face=detect_face(frame)
-    # plt.imshow(face)
-    face=cv.resize(face,(224,224))
-    face = face[...,::-1]
-    face_representation= vgg_face_descriptor.predict(preprocess_loaded_image(face))[0,:]
-    min_sim=2
-    candidate=''
-    for key in faces.keys():
-        candidate_representation=faces[key]
-        cosine_similarity = findCosineSimilarity(face_representation, candidate_representation) # Should be less then 0.40
-        euclidean_distance = findEuclideanDistance(face_representation, candidate_representation) #Less then 120
-        print("Candidate {} CosineSimularity: {}, EuclideanDistance: {}" .format(key, cosine_similarity, euclidean_distance))
-        if cosine_similarity<min_sim:
-            min_sim=cosine_similarity
-            candidate=key
-  
-    print(candidate)
+while True:
+    try:
+        vc = cv.VideoCapture(0)
+        if vc.isOpened(): 
+            is_capturing, frame = vc.read()
+            frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+            vc.release()
+            face=detect_face(frame)
+            # cv.imwrite(faces_dir +"frame1.jpg", face)
+            # plt.imshow(face)
+            face=cv.resize(face,(224,224))
+            face = face[...,::-1]
+            face_representation= vgg_face_descriptor.predict(preprocess_loaded_image(face))[0,:]
+            min_sim=0.4
+            candidate=''
+            finalKey=''
+            for key in faces.keys():
+                candidate_representation=faces[key]
+                cosine_similarity = findCosineSimilarity(face_representation, candidate_representation) # Should be less then 0.40
+                euclidean_distance = findEuclideanDistance(face_representation, candidate_representation) #Less then 120
+                # print("Candidate {} CosineSimularity: {}, EuclideanDistance: {}, Key: {}" .format(mainDict[key], cosine_similarity, euclidean_distance, key))
+                if cosine_similarity<min_sim:
+                    min_sim=cosine_similarity
+                    candidate=mainDict[key]
+                    finalKey=key
+            total=len(dirDict[mainDict[finalKey]])
+            cv.imwrite(faces_dir + "/" + candidate + "/" + candidate + "-" + str(total + 1) + ".jpg", face)
+            print("Candidate {}, Key {}, Sim {}".format(candidate, finalKey, min_sim))
+            time.sleep(2)
+    except:
+        print("No face")
+        time.sleep(2)
+        continue
     
     # speak('Hello '+candidate+'. May I help you?')
 
