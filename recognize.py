@@ -1,7 +1,7 @@
 from keras.models import Model, Sequential
 from keras.layers import Input, Convolution2D, ZeroPadding2D, MaxPooling2D, Flatten, Dense, Dropout, Activation
 import numpy as np
-from os import listdir,path
+from os import listdir,path, remove
 from os.path import isfile, join, isdir, splitext
 from PIL import Image
 from keras.preprocessing.image import load_img, save_img, img_to_array
@@ -13,6 +13,8 @@ import boto3
 # import sounddevice as sd
 import time
 from threading import Thread
+import calendar;
+import time;
 
 model = Sequential()
 model.add(ZeroPadding2D((1,1),input_shape=(224,224, 3)))
@@ -90,35 +92,70 @@ def findEuclideanDistance(source_representation, target_representation):
 
 face_cascade = cv.CascadeClassifier(join('haarcascades','haarcascade_frontalface_default.xml'))
 
-faces_dir='faces1'
+faces_dir='faces'
 
 faces={}
 mainDict={}
 dirDict={}
 dirs = [f for f in listdir(faces_dir) if isdir(join(faces_dir, f))]
 face_imgs=None
-for dir in dirs:
-    dirDict[dir]=[]
-    if face_imgs is None:
-        face_imgs = [f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
-        for img in face_imgs:
-            mainDict[splitext(img)[0]]=dir
-            dirDict[dir].append(splitext(img)[0])
-    else:
-        items=[f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
-        for item in items:
-            face_imgs.append(item)
-            mainDict[splitext(item)[0]]=dir
-            dirDict[dir].append(splitext(item)[0])
- 
+
+def updateDir():
+    global face_imgs
+    global dirDict 
+    for dir in dirs:
+        dirDict[dir]=[]
+        if face_imgs is None:
+            face_imgs = [f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
+            for img in face_imgs:
+                mainDict[splitext(img)[0]]=dir
+                dirDict[dir].append(splitext(img)[0])
+        else:
+            items=[f for f in listdir(faces_dir + "/" + dir) if isfile(join(faces_dir + "/" + dir, f))]
+            for item in items:
+                face_imgs.append(item)
+                mainDict[splitext(item)[0]]=dir
+                dirDict[dir].append(splitext(item)[0])
+
+def updateDirectory(directory):
+    global face_imgs
+    global dirDict 
+    items=[f for f in listdir(faces_dir + "/" + directory) if isfile(join(faces_dir + "/" + directory, f))]
+    for item in items:
+        if splitext(item)[0] not in dirDict[directory]:
+            dirDict[directory].append(splitext(item)[0])
+            mainDict[splitext(item)[0]]=directory
+            break
+
+updateDir()
 
 # face_imgs = [f for f in listdir(faces_dir) if isfile(join(faces_dir, f))]
+def init_faces():
+    global face_imgs
+    global faces_dir
+    global mainDict
+    global faces
+    for face_file in face_imgs:
+        face_label=path.splitext(face_file)[0]
+        print(face_label)
+        face_representation= vgg_face_descriptor.predict(preprocess_image(join(faces_dir + "/" + mainDict[face_label],face_file)))[0,:]
+        faces[face_label]=face_representation
 
-for face_file in face_imgs:
+def init_one_face(face_file):
+    global face_imgs
+    global faces_dir
+    global mainDict
+    global faces
     face_label=path.splitext(face_file)[0]
     print(face_label)
+    # for imgs in dirDict[mainDict[face_label]]:
+    if len(dirDict[mainDict[face_label]]) > 5:
+        remove(faces_dir + "/" + mainDict[face_label] + "/" + dirDict[mainDict[face_label]][0] + ".jpg")
+        dirDict[mainDict[face_label]].pop(0)
     face_representation= vgg_face_descriptor.predict(preprocess_image(join(faces_dir + "/" + mainDict[face_label],face_file)))[0,:]
     faces[face_label]=face_representation
+
+init_faces()
 
 def detect_face(img):
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -154,11 +191,13 @@ while True:
                     min_sim=cosine_similarity
                     candidate=mainDict[key]
                     finalKey=key
-            total=len(dirDict[mainDict[finalKey]])
-            cv.imwrite(faces_dir + "/" + candidate + "/" + candidate + "-" + str(total + 1) + ".jpg", face)
+            ts = calendar.timegm(time.gmtime())        
+            cv.imwrite(faces_dir + "/" + candidate + "/" + candidate + "-" + str(ts) + ".jpg", face)
+            updateDirectory(candidate)
+            init_one_face(candidate + "-" + str(ts) + ".jpg")
             print("Candidate {}, Key {}, Sim {}".format(candidate, finalKey, min_sim))
             time.sleep(2)
-    except:
+    except Exception as ex:
         print("No face")
         time.sleep(2)
         continue
